@@ -80,28 +80,23 @@ static SYSCONFIG_VALUES: [&'static str; 1] = [
 
 /// Attempts to parse the header at the given path, returning a map of definitions to their values.
 /// Each entry in the map directly corresponds to a `#define` in the given header.
-fn parse_header_defines<P: AsRef<Path>>(
-    pyconfig_path: P,
-) -> Result<HashMap<String, String>, String> {
+fn parse_header_defines<P: AsRef<Path>>(header_path: P) -> Result<HashMap<String, String>, String> {
+    // This regex picks apart a C style, single line `#define` statement into an identifier and a
+    // value. e.g. for the line `#define Py_DEBUG 1`, this regex will capture `Py_DEBUG` into
+    // `ident` and `1` into `value`.
     let define_regex =
         Regex::new(r"^\s*#define\s+(?P<ident>[a-zA-Z0-9_]+)\s+(?P<value>.+)\s*$").unwrap();
 
-    let header_file = File::open(pyconfig_path).map_err(|e| e.to_string())?;
+    let header_file = File::open(header_path.as_ref()).map_err(|e| e.to_string())?;
     let header_reader = BufReader::new(&header_file);
 
     let definitions = header_reader
         .lines()
         .filter_map(|maybe_line| {
-            let line = if let Ok(l) = maybe_line {
-                l
-            } else {
-                return None;
-            };
-            let captures = if let Some(c) = define_regex.captures(&line) {
-                c
-            } else {
-                return None;
-            };
+            let line = maybe_line.unwrap_or_else(|err| {
+                panic!("failed to read {}: {}", header_path.as_ref().display(), err);
+            });
+            let captures = define_regex.captures(&line)?;
 
             if captures.name("ident").is_some() && captures.name("value").is_some() {
                 Some((
@@ -129,8 +124,7 @@ fn fix_config_map(mut config_map: HashMap<String, String>) -> HashMap<String, St
 
 fn load_cross_compile_info() -> Result<(PythonVersion, HashMap<String, String>, Vec<String>), String>
 {
-    let python_include_dir =
-        env::var("PYO3_XC_PYTHON_INCLUDE_DIR").expect("PYO3_XC_PYTHON_INCLUDE_DIR must be defined");
+    let python_include_dir = env::var("PYO3_CROSS_INCLUDE_DIR").unwrap();
     let python_include_dir = Path::new(&python_include_dir);
 
     let patchlevel_defines = parse_header_defines(python_include_dir.join("patchlevel.h"))?;
@@ -154,7 +148,7 @@ fn load_cross_compile_info() -> Result<(PythonVersion, HashMap<String, String>, 
 
     let config_lines = vec![
         "".to_owned(), // compatibility, not used when cross compiling.
-        env::var("PYO3_XC_PYTHON_LIB_DIR").expect("PYO3_XC_PYTHON_LIB_DIR must be defined"),
+        env::var("PYO3_CROSS_LIB_DIR").unwrap(),
         config_map
             .get("Py_ENABLE_SHARED")
             .expect("Py_ENABLE_SHARED undefined")
@@ -567,7 +561,8 @@ fn main() {
     // If you have troubles with your shell accepting '.' in a var name,
     // try using 'env' (sorry but this isn't our fault - it just has to
     // match the pkg-config package name, which is going to have a . in it).
-    let cross_compiling = env::var("PYO3_XC").is_ok();
+    let cross_compiling =
+        env::var("PYO3_CROSS_INCLUDE_DIR").is_ok() && env::var("PYO3_CROSS_LIB_DIR").is_ok();
     let (interpreter_version, mut config_map, lines) = if cross_compiling {
         load_cross_compile_info()
     } else {
