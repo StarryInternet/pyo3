@@ -150,7 +150,7 @@ fn function_wrapper_ident(name: &syn::Ident) -> syn::Ident {
     syn::Ident::new(
         &format!(
             "__pyo3_get_function_{}",
-            name.to_string().trim_left_matches("r#")
+            name.to_string().trim_start_matches("r#")
         ),
         Span::call_site(),
     )
