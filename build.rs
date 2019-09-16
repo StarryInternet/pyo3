@@ -11,12 +11,12 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::process::Command;
 use std::process::Stdio;
-use version_check::{is_min_date, is_min_version, supports_features};
+use version_check::{is_min_date, is_min_version};
 
 // Specifies the minimum nightly version needed to compile pyo3.
 // This requirement is due to https://github.com/rust-lang/rust/issues/55380
 const MIN_DATE: &'static str = "2018-11-02";
-const MIN_VERSION: &'static str = "1.32.0-nightly";
+const MIN_VERSION: &'static str = "1.32.0";
 
 #[derive(Debug)]
 struct PythonVersion {
@@ -510,7 +510,6 @@ fn version_from_env() -> Option<PythonVersion> {
 }
 
 fn check_rustc_version() {
-    let ok_channel = supports_features();
     let ok_version = is_min_version(MIN_VERSION);
     let ok_date = is_min_date(MIN_DATE);
 
@@ -521,14 +520,8 @@ fn check_rustc_version() {
         );
     };
 
-    match (ok_channel, ok_version, ok_date) {
-        (Some(ok_channel), Some((ok_version, version)), Some((ok_date, date))) => {
-            if !ok_channel {
-                eprintln!("Error: pyo3 requires a nightly or dev version of Rust.");
-                print_version_err(&*version, &*date);
-                panic!("Aborting compilation due to incompatible compiler.")
-            }
-
+    match (ok_version, ok_date) {
+        (Some((ok_version, version)), Some((ok_date, date))) => {
             if !ok_version || !ok_date {
                 eprintln!("Error: pyo3 requires a more recent version of rustc.");
                 eprintln!("Use `rustup update` or your preferred method to update Rust");
